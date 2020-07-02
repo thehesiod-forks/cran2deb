@@ -359,7 +359,7 @@ class PackageBuilder:
 
             if pkg_name.cran_name.lower() == "rnetcdf":
                 with open(debian_shlibs_path, "a") as f:
-                    f.write("libnetcdf 13 fbn-libnetcdf" + os.linesep)
+                    f.write("libnetcdf 15 fbn-libnetcdf" + os.linesep)
 
             if pkg_name.cran_name.lower() in {"rgdal", "sf"}:
                 if not os.path.exists("/usr/bin/gdal-config"):
@@ -367,7 +367,11 @@ class PackageBuilder:
                     os.symlink("/usr/local/bin/gdal-config", "/usr/bin/gdal-config")
 
                 with open(debian_shlibs_path, "a") as f:
-                    f.write("libgdal 20 fbn-libgdal" + os.linesep)
+                    f.write("libgdal 26 fbn-libgdal" + os.linesep)
+
+            if pkg_name.cran_name.lower() in {"sf"}:
+                with open(debian_shlibs_path, "a") as f:
+                    f.write("libproj 17 fbn-libproj" + os.linesep)
 
             self._ensure_distribution_in_changelog(os.path.join(dirs[0], "debian", "changelog"))
 
