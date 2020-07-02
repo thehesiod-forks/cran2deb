@@ -412,7 +412,7 @@ class PackageBuilder:
                 self._deb_repos.refresh()
 
     # NOTE: this can be recursive
-    def build_pkg(self, cran_pkg_name: PkgName):
+    def build_pkg(self, cran_pkg_name: PkgName, force_build: bool = False):
         local_ver = _get_cran2deb_version(cran_pkg_name)
 
         print(f"Ensuring Build of {cran_pkg_name} ver: {local_ver}")
@@ -426,7 +426,8 @@ class PackageBuilder:
             return
 
         # If our local repo has the deb similarly we assume all the deps made it as well
-        if self._deb_repos.local_has_version(cran_pkg_name, local_ver):
+        if not force_build and self._deb_repos.local_has_version(cran_pkg_name, local_ver):
+            print(f"Local Repo already has version: {local_ver} of {cran_pkg_name}.  Skipping")
             return
 
         # Build source package
@@ -491,6 +492,7 @@ def _get_cran2deb_version(pkg_name: PkgName):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-origin', type=str, default='deb.fbn.org', help='Debian Repo hostname')
+    parser.add_argument('-force_build', action='store_true', help='Build + Upload to deb repo even if in local repo')
     parser.add_argument('cran_pkg_name', type=str, nargs='+', help='package to build.  ex: ggplot2.  To force specific version: ggplot2=1.2.3')
 
     app_args = parser.parse_args()
@@ -518,7 +520,7 @@ def main():
         if cran_pkg_name.version:
             _ensure_old_versions({cran_pkg_name.cran_name: cran_pkg_name.version})
 
-        pkg_builder.build_pkg(cran_pkg_name)
+        pkg_builder.build_pkg(cran_pkg_name, app_args.force_build)
 
 
 if __name__ == '__main__':
