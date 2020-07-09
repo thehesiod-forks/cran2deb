@@ -82,4 +82,4 @@ sysreq ignore imagemagick or graphicsmagick
 sysreq ignore optipng for manipulating images
 alias_build nlopt libnlopt-dev
 alias_run nlopt libnlopt0
-sysreq nlopt a system installation of nlopt will be used if available
+sysreq nlopt nlopt
