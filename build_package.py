@@ -294,7 +294,12 @@ class DebRepos:
 
     def local_has_version(self, pkg_name: PkgName, deb_ver: str):
         deb_ver = _get_deb_version(deb_ver)
-        return deb_ver in self._local_deb_info.get(pkg_name.deb_name, _frozen_map)
+        versions_available = self._local_deb_info.get(pkg_name.deb_name, _frozen_map)
+        has_ver = deb_ver in versions_available
+        if not has_ver:
+            print(f"pkg: {pkg_name.deb_name} ver: {deb_ver} not available in local versions: {versions_available}")
+
+        return has_ver
 
     def refresh(self):
         self._http_refresh()
@@ -306,7 +311,12 @@ class DebRepos:
 
         # This should be moved out
         deb_ver = _get_deb_version(deb_ver)
-        return deb_ver in self._http_deb_info.get(pkg_name.deb_name, _frozen_map)
+        versions_available = self._http_deb_info.get(pkg_name.deb_name, _frozen_map)
+        has_ver = deb_ver in versions_available
+        if not has_ver:
+            print(f"pkg: {pkg_name.deb_name} ver: {deb_ver} not available in http versions: {versions_available}")
+
+        return has_ver
 
 
 def _get_build_dependencies(dir_path: str) -> Set[PkgName]:
@@ -549,7 +559,7 @@ def _get_cran2deb_version(pkg_name: PkgName):
 
         m = _version_update_line_re.match(line)
         if m:
-            return m.group('prev_pkgver')
+            return m.group('prev_pkgver') + f"R{'.'.join(_r_major_minor)}"
 
     if rver:
         return rver
