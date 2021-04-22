@@ -6,22 +6,25 @@ this_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Install apt-get requirements
 # !!!NOTE!!! You should use the version which supports multiple versions: https://github.com/profitbricks/reprepro
+# r-cran-littler is critical for the /usr/bin/r script used extensively by cran2deb
 apt-get update && \
     apt-get install -y --no-install-recommends \
     pbuilder devscripts fakeroot dh-r reprepro sqlite3 lsb-release build-essential equivs \
     libcurl4-gnutls-dev libxml2-dev libssl-dev \
-    cdbs
+    cdbs r-cran-littler
 
 # Attempt to install packages
 function join_by { local d=${1-} f=${2-}; if shift 2; then printf %s "$f" "${@/#/$d}"; fi; }
 
 
-set +e
-required_modules=("ctv" "RSQLite" "DBI" "digest" "getopt" "Rcpp" "littler" "hwriter")
-for module in ${required_modules[*]}; do
-     apt-get install -y --no-install-recommends "r-cran-${module,,}"
-done
-set -e
+required_modules=("Rcpp" "ctv" "RSQLite" "DBI" "digest" "getopt" "hwriter")
+# These may pick up modules for the wrong R version
+# TODO: fix Rcpp deps
+#set +e
+#for module in ${required_modules[*]}; do
+#     apt-get install -y --no-install-recommends "r-cran-${module,,}"
+#done
+#set -e
 
 # NOTE: if you enable this it can hang your docker container
 #export MAKEFLAGS='-j$(nproc)'
@@ -99,6 +102,10 @@ reset_cran2deb() {
     sqlite3 /var/cache/cran2deb/cran2deb.db "DROP TABLE builds; DROP TABLE packages;"
     sqlite3 /var/cache/cran2deb/cran2deb.db "DELETE FROM sysreq_override; DELETE FROM debian_dependency; DELETE FROM license_override;"
     cran2deb repopulate
+}
+
+reset_reprepro () {
+  reprepro -b /var/www/cran2deb/rep removefilter rbuilders 'Section'
 }
 
 python3 -m pip install distro

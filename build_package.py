@@ -16,7 +16,7 @@ import distro
 import requests
 
 
-_empty_dict = MappingProxyType({})
+_frozen_map = MappingProxyType({})
 
 
 _dist_template = """
@@ -44,7 +44,7 @@ _dist_path = "/etc/cran2deb/archive/rep/conf/distributions"
 _dep_re = re.compile(r"(?P<pkgname>[^ ]+)\s*(?:\((?P<ver_restriction>.*)\))?")
 
 # '3.5.7-0~jessie'
-_deb_version_re = re.compile(r'(?P<version>[^-]+)-(?P<build_num>[^~]+)(?:~(?P<distribution>.*))?')
+_deb_version_re = re.compile(r'(?P<version>[^-]+)-(?P<build_num>[^~]+)(?:(?P<r_ver>R\d+\.\d+)?~(?P<distribution>.+))?')
 
 # rver: 0.2.20  debian_revision: 2  debian_epoch: 0
 _rver_line_re = re.compile(r'rver: (?P<rver>[^ ]+)\s+debian_revision: (?P<debian_revision>[^ ]+)\s+ debian_epoch: (?P<debian_epoch>[^ ]+)')
@@ -54,9 +54,10 @@ _version_update_line_re = re.compile(r'version_update:\s+rver: (?P<rver>[^ ]+)\s
 
 _changelog_first_line = re.compile(r'(?P<pkgname>[^ ]+) \((?P<version>[^)]+)\) (?P<eol>.*)')
 
-_r_version = subprocess.check_output(["dpkg-query", "--showformat=${Version}", "--show", "r-base-core"]).decode('utf-8')
+_r_version = tuple(subprocess.check_output(["dpkg-query", "--showformat=${Version}", "--show", "r-base-core"]).decode('utf-8').split('.'))
+_r_major_minor = _r_version[:2]
 _distribution = subprocess.check_output(["lsb_release", "-c", "-s"]).decode('utf-8').strip()  # ex: stretch
-_deb_repo_codename = f'{_distribution}-cran{_r_version[:3].replace(".", "")}'
+_deb_repo_codename = f'{_distribution}-cran{"".join(_r_major_minor)}'
 
 _num_cpus = multiprocessing.cpu_count()
 
@@ -75,8 +76,10 @@ def _get_deb_version(deb_ver: str) -> DebVersion:
     m = m.groupdict()
 
     distribution = m.get('distribution')
-    assert not _distribution or not distribution or _distribution == distribution, f"distribution of {deb_ver} does not match {_distribution}"
+    r_ver = m.get('r_ver')
 
+    assert not distribution or _distribution == distribution, f"distribution ({distribution}) of {deb_ver} does not match {_distribution}"
+    assert not r_ver or r_ver == "".join(_r_major_minor)
     return DebVersion(m['version'], m['build_num'])
 
 
@@ -172,8 +175,8 @@ def _ensure_old_versions(old_packages: Dict[str, str]):
     conn.row_factory = sqlite3.Row
 
     scm_revision = subprocess.check_output(['r', '-q', '-e', 'suppressPackageStartupMessages(library(cran2deb));cat(scm_revision)']).decode('utf-8')
-    if not _r_version.startswith("3.4") and not _r_version.startswith("3.5"):
-        print(f'Unsupported R version: {_r_version}')
+    if ".".join(_r_major_minor) not in {"3.4", "3.5", "4.0"}:
+        print(f'Unsupported R version: {".".join(_r_version)}')
         return
 
     print("Checking for old versions")
@@ -240,7 +243,7 @@ class DebRepos:
 
     def local_has_version(self, pkg_name: PkgName, deb_ver: str):
         deb_ver = _get_deb_version(deb_ver)
-        return deb_ver in self._local_deb_info.get(pkg_name.deb_name, _empty_dict)
+        return deb_ver in self._local_deb_info.get(pkg_name.deb_name, _frozen_map)
 
     def refresh(self):
         self._http_refresh()
@@ -252,7 +255,7 @@ class DebRepos:
 
         # This should be moved out
         deb_ver = _get_deb_version(deb_ver)
-        return deb_ver in self._http_deb_info.get(pkg_name.deb_name, _empty_dict)
+        return deb_ver in self._http_deb_info.get(pkg_name.deb_name, _frozen_map)
 
 
 def _get_build_dependencies(dir_path: str) -> Set[PkgName]:
@@ -315,13 +318,20 @@ class PackageBuilder:
         pkgs = {pkg.deb_name for pkg in deps}
         subprocess.check_call(['apt-get', 'install', '--no-install-recommends', '-y'] + list(pkgs))
 
-    def _ensure_distribution_in_changelog(self, changelog_path: str):
+    @staticmethod
+    def _ensure_distribution_in_changelog(changelog_path: str):
+        # This ensures each file is unique in the repo since files for all distributions
+        # are stored together so each file needs to be unique
         with open(changelog_path, 'r') as f:
             data = f.read().splitlines()
 
         m = _changelog_first_line.match(data[0]).groupdict()
-        if f"~{_distribution}" not in data[0]:
-            data[0] = f'{m["pkgname"]} ({m["version"]}~{_distribution}) {m["eol"]}'
+        # NOTE: make sure that the suffix will have the correct version comparison, can check with:
+        #   dpkg --compare-versions 0.20-41-1cran1~buster gt 0.20-41-1cran1R4.0~buster; echo $? (0 = true)
+        # and verify with apt-cache policy r-cran-[name] after pushed to deb repo
+        suffix = f"R{'.'.join(_r_major_minor)}~{_distribution}"
+        if suffix not in data[0]:
+            data[0] = f'{m["pkgname"]} ({m["version"]}{suffix}) {m["eol"]}'
 
         data = os.linesep.join(data)
         with open(changelog_path, 'w') as f:
@@ -448,7 +458,7 @@ def _get_pkg_dsc_path(pkg_name: PkgName):
 
 def _get_cran2deb_version(pkg_name: PkgName):
     """
-    On a non-build package output will look like:
+    On a non-built package output will look like:
 
     new_build_version:   pkgname: gtable
     rver: 0.3.0  debian_revision: 1  debian_epoch: 0
