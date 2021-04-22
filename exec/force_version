@@ -11,7 +11,7 @@ if (length(argv) == 4) {
     # we use this as a flag in getrpkg.R to know if this is an archived package or not
     needs_compilation = NA
 
-    if(pkgname %in% rownames(available) & available[pkgname,]['Version'] = version) {
+    if(pkgname %in% rownames(available) & available[pkgname,]['Version'] == version) {
         needs_compilation="yes"
     }
 
