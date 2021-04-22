@@ -4,15 +4,25 @@
 ## DOC:
 suppressPackageStartupMessages(library(cran2deb))
 
-if (length(argv) == 4) {
+if (length(argv) == 3) {
     pkgname = argv[2]
     version <- argv[3]
 
-    # we use this as a flag in getrpkg.R to know if this is an archived package or not
-    needs_compilation = NA
+    # we use this as a flag=NA in getrpkg.R to know if this is an archived package or not
+    # first get the current value or default
+    if(pkgname %in% rownames(available)) {
+        needs_compilation = available[pkgname,'NeedsCompilation']
+    }
+    else {
+        needs_compilation = "yes"
+    }
 
-    if(pkgname %in% rownames(available) & available[pkgname,]['Version'] == version) {
-        needs_compilation="yes"
+    latest_version = available.packages()['ggplot2', 'Version']
+    if(latest_version != version) {
+        needs_compilation=NA
+    }
+    else if(is.na(needs_compilation)) {
+        needs_compilation = "yes"
     }
 
     newrow <- cbind(Package=pkgname, Version=version, Repository="http://cran.r-project.org/src/contrib", NeedsCompilation=needs_compilation)
@@ -33,4 +43,5 @@ if (length(argv) == 4) {
     save(debian_pkgs, base_pkgs, available, ctv.available, file=file.path(cache_root, 'cache.rda'), eval.promises=T)
 } else {
    cat("usage: force_version pkg_name version\n")
+   quit(status=1)
 }
