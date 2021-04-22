@@ -4,11 +4,18 @@
 ## DOC:
 suppressPackageStartupMessages(library(cran2deb))
 
-if (length(argv) == 3) {
+if (length(argv) == 4) {
     pkgname = argv[2]
     version <- argv[3]
 
-    newrow <- cbind(Package=pkgname, Version=version, Repository="http://cran.r-project.org/src/contrib")
+    # we use this as a flag in getrpkg.R to know if this is an archived package or not
+    needs_compilation = NA
+
+    if(pkgname %in% rownames(available) & available[pkgname,]['Version'] = version) {
+        needs_compilation="yes"
+    }
+
+    newrow <- cbind(Package=pkgname, Version=version, Repository="http://cran.r-project.org/src/contrib", NeedsCompilation=needs_compilation)
 
     # re-order columns to match table
     newrow <- newrow[match(colnames(available), colnames(newrow))]

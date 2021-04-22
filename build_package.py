@@ -3,7 +3,7 @@ import argparse
 import os
 import subprocess
 import re
-from typing import Set, Dict, NamedTuple, Optional, Tuple
+from typing import Set, Dict, NamedTuple, Optional, List
 from types import MappingProxyType
 import tempfile
 import glob
@@ -11,10 +11,13 @@ from collections import defaultdict
 import multiprocessing
 import sqlite3
 import distro
+import contextlib
 
 # Third Party
 import requests
 
+
+# NOTE: if there are weird dependency problems look in /var/lib/dpkg/status
 
 _frozen_map = MappingProxyType({})
 
@@ -99,6 +102,38 @@ def _get_name_replacements() -> Dict[str, str]:
     return name_replacements
 
 
+def _ensure_epoch(epoch: int):
+    print(f"Ensuring epoch: {epoch}")
+    conn = sqlite3.connect(_local_sqlite_path)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    row = cur.execute("SELECT version, base_epoch FROM database_versions where base_epoch = (select max(base_epoch) from database_versions)").fetchone()
+    previous_epoch = row['base_epoch']
+    if previous_epoch == epoch:
+        return previous_epoch
+
+    cur.execute("update database_versions set base_epoch=? where version = ?", [epoch, row['version']])
+    conn.commit()
+
+    row = cur.execute("SELECT version, base_epoch FROM database_versions where base_epoch = (select max(base_epoch) from database_versions)").fetchone()
+    if row['base_epoch'] != epoch:
+        rows = cur.execute("SELECT version, base_epoch FROM database_versions").fetchall()
+        print(list(map(dict, rows)))
+        assert False
+
+    return previous_epoch
+
+
+@contextlib.contextmanager
+def _epoch_context(epoch: Optional[int]):
+    previous_epoch = _ensure_epoch(epoch) if epoch is not None else None
+    try:
+        yield
+    finally:
+        if previous_epoch is not None:
+            _ensure_epoch(previous_epoch)
+
+
 class PkgName:
     _r_cran_prefix = 'r-cran-'
     _r_bioc_prefix = 'r-bioc-'
@@ -106,11 +141,16 @@ class PkgName:
     _name_replacements = _get_name_replacements()
 
     def __init__(self, pkg_name: str, force_cran: bool = False):
-        self.version = None
+        self.version: Optional[str] = None
+        self.epoch: Optional[int] = None
 
         if '=' in pkg_name:
             pkg_name, self.version = pkg_name.split("=", 1)
             assert not set(self.version) & {'>', '<', '='}
+
+        if self.version and ':' in self.version:
+            self.epoch, self.version = self.version.split(':', 1)
+            self.epoch = int(self.epoch)
 
         if force_cran:
             self.cran_name = self._strip_r_cran_prefix(pkg_name)
@@ -126,7 +166,7 @@ class PkgName:
             self.cran_name = self._name_replacements.get(self.cran_name, self.cran_name)
 
     def __repr__(self):
-        value = f'deb_name="{self.deb_name}"'
+        value = f'deb_name="{self.deb_name}", epoch={self.epoch or 0}'
         if self.cran_name:
             value = f'{value}, cran_name="{self.cran_name}"'
         return f'PkgName({value})'
@@ -147,6 +187,15 @@ class PkgName:
         return pkg_name
 
 
+def _set_package_compile_failed(pkg: PkgName):
+    conn = sqlite3.connect(_local_sqlite_path)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    print(f"Setting build success to 0 for package: {pkg}")
+    cur.execute("update builds set success = 0 where package=? and r_version = ? and deb_epoch = ?;", [pkg.cran_name, pkg.version, pkg.epoch or 0])
+    conn.commit()
+
+
 def _reset_module(pkg_name: PkgName):
     print(f"Forcing rebuild of {pkg_name}")
 
@@ -162,7 +211,7 @@ def _reset_module(pkg_name: PkgName):
     subprocess.check_call(["cran2deb", "build_force", pkg_name.cran_name])
 
 
-def _ensure_old_versions(old_packages: Dict[str, str]):
+def _ensure_old_versions(old_packages: List[PkgName]):
     # Since available.packages will not pick up old packages with older R version dependencies to match
     # the current R version, the user can manually add an entry to the packages to force it
     # example: INSERT OR REPLACE INTO packages (package, latest_r_version) VALUES ('mvtnorm', '1.0-8');
@@ -184,7 +233,9 @@ def _ensure_old_versions(old_packages: Dict[str, str]):
     system = f"{info['distributor_id'].lower()}-{info['codename']}"
 
     cur = conn.cursor()
-    for name, ver in old_packages.items():
+    for pkg in old_packages:
+        name = pkg.cran_name
+        ver = pkg.version
         cur.execute("SELECT * FROM builds WHERE package=?", [name])
         rows = [row for row in cur]
         conn.commit()
@@ -201,11 +252,11 @@ def _ensure_old_versions(old_packages: Dict[str, str]):
         subprocess.check_call(['cran2deb', 'force_version', name, ver])
 
         if rows:
-            _reset_module(PkgName(name, True))
+            _reset_module(pkg)
 
         cur.execute("""INSERT OR REPLACE INTO builds
             (package, system, r_version, deb_epoch, deb_revision, db_version, success, date_stamp, time_stamp, scm_revision, log) VALUES
-            (?, ?, ?, 0, 1, 1, 0, date('now'), strftime('%H:%M:%S.%f', 'now'), ?, '')""", [name, system, ver, scm_revision])
+            (?, ?, ?, ?, 1, 1, 0, date('now'), strftime('%H:%M:%S.%f', 'now'), ?, '')""", [name, system, ver, pkg.epoch or 0, scm_revision])
 
         conn.commit()
 
@@ -442,7 +493,10 @@ class PackageBuilder:
 
         # Build source package
         print("Building source package")
-        subprocess.check_call(["cran2deb", "build", cran_pkg_name.cran_name])
+        with _epoch_context(cran_pkg_name.epoch):
+            if force_build:
+                _set_package_compile_failed(cran_pkg_name)
+            subprocess.check_call(["cran2deb", "build", cran_pkg_name.cran_name])
 
         # Build deb package
         self._build_pkg_dsc_and_upload(cran_pkg_name)
@@ -451,7 +505,7 @@ class PackageBuilder:
 def _get_pkg_dsc_path(pkg_name: PkgName):
     glob_str = f"/etc/cran2deb/archive/rep/pool/main/{pkg_name.cran_name[0].lower()}/{pkg_name.cran_name.lower()}/*.dsc"
     glob_dscs = glob.glob(glob_str)
-    assert len(glob_dscs) == 1, f"Could not find one dsc in: {glob_str}"
+    assert len(glob_dscs) == 1, f"Could not find one dsc in: {glob_str} found: {glob_dscs}"
 
     return glob_dscs[0]
 
@@ -476,7 +530,8 @@ def _get_cran2deb_version(pkg_name: PkgName):
 
     """
     # TODO: this is slow, find a way to do this faster
-    output = subprocess.check_output(['r', '-q', '-e', f"suppressMessages(library(cran2deb)); cat(new_build_version('{pkg_name.cran_name}'))"]).decode('utf-8')
+    with _epoch_context(pkg_name.epoch):
+        output = subprocess.check_output(['r', '-q', '-e', f"suppressMessages(library(cran2deb)); cat(new_build_version('{pkg_name.cran_name}'))"]).decode('utf-8')
 
     rver = None
     for line in output.splitlines():
@@ -487,6 +542,9 @@ def _get_cran2deb_version(pkg_name: PkgName):
                 m['debian_revision'] = "2"
 
             rver = f"{m['rver']}-1cran{m['debian_revision']}"
+            if m['debian_epoch']:
+                rver = f"{m['debian_epoch']}:{rver}"
+
             continue
 
         m = _version_update_line_re.match(line)
@@ -513,12 +571,12 @@ def main():
     with open(_dist_path, "w") as f:
         f.write(_dist_template.format(origin=app_args.origin))
 
-    old_packages = {
-        "mvtnorm": '1.0-8',  # latest mvtnorm is 3.5+
-        'multcomp': '1.4-8',  # Latest version requires latest mvtnorm which requires newer R version
-        'caret': '6.0-81',
-        'udunits': '1.3.1'
-    }
+    old_packages = [
+        PkgName('mvtnorm=1.0-8', True),  # latest mvtnorm is 3.5+
+        PkgName('multcomp=1.4-8', True),  # Latest version requires latest mvtnorm which requires newer R version
+        PkgName('caret=6.0-81', True),
+        PkgName('udunits=1.3.1', True)
+    ]
 
     _ensure_old_versions(old_packages)
 
@@ -528,7 +586,7 @@ def main():
         cran_pkg_name = PkgName(cran_pkg_name, True)
 
         if cran_pkg_name.version:
-            _ensure_old_versions({cran_pkg_name.cran_name: cran_pkg_name.version})
+            _ensure_old_versions([cran_pkg_name])
 
         pkg_builder.build_pkg(cran_pkg_name, app_args.force_build)
 

@@ -13,11 +13,11 @@ build <- function(name,extra_deps,force=F,do_cleanup=T) {
         error('failed to build in new_build_version: ',name)
         return(NULL)
     }
-	
+
 #	if (name == "sp"){
 #		version <- paste("1:",version,sep="")
 #		}
-	
+
     result <- try((function() {
         if (!force && !needs_build(name,version)) {
             notice('skipping build of',name)
@@ -50,7 +50,10 @@ build <- function(name,extra_deps,force=F,do_cleanup=T) {
 ##         ret = log_system('umask 002;dput','-c',shQuote(dput_config),'local' ,changesfile(pkg$srcname,pkg$debversion))
 
 #	cmd = paste('umask 002; cd /var/www/cran2deb/rep && reprepro -b . include testing', changesfile(pkg$srcname,pkg$debversion),sep=" ")
-    cmd = paste('umask 002; cd /var/www/cran2deb/rep && reprepro --ignore=wrongdistribution --ignore=missingfile -b . include rbuilders', changesfilesrc(pkg$srcname,pkg$debversion,dir),sep=" ")
+    # strip out the epoch
+    deb_version <- unlist(strsplit(pkg$debversion, ':'))
+    deb_version <- deb_version[length(deb_version)]
+    cmd = paste('umask 002; cd /var/www/cran2deb/rep && reprepro --ignore=wrongdistribution --ignore=missingfile -b . include rbuilders', changesfilesrc(pkg$srcname,deb_version,dir),sep=" ")
 	notice('Executing: ',cmd)
         #if (verbose) notice('Executing: ',cmd)
         ret = log_system(cmd)
@@ -157,7 +160,7 @@ build_debian <- function(pkg) {
     wd <- getwd()
     #notice(paste("Now in path ",wd,"\n",sep=""))
     setwd(pkg$path)
-    
+
     notice('building Debian source package', pkg$debname, paste('(', pkg$debversion,')', sep=''), 'in', getwd(), '...')
 
     cmd = paste('debuild -us -uc -sa -S -d')

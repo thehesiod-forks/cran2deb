@@ -67,6 +67,13 @@ export SYS="debian-${ARCH}"
 export R_VERSION=$(dpkg-query --showformat='${Version}' --show r-base-core)
 export DIST=$(lsb_release -c -s)
 
+if [[ ! -e ~/.sqliterc ]]; then
+  cat << EOF > ~/.sqliterc
+.header on
+.mode column
+EOF
+fi
+
 if [[ ! -d "/etc/cran2deb" ]]; then
     mkdir /etc/cran2deb/
     cp -r ${ROOT}/etc/* /etc/cran2deb/
