@@ -61,6 +61,8 @@ fi
 
 chmod u+x /usr/bin/cran2deb
 
+# TODO: instead we should ensure these are in the bashrc so they're run on every terminal along with MAKEFLAGS
+#   along with the helper functions below
 export ROOT=$(cran2deb root)
 export ARCH=$(dpkg --print-architecture)
 export SYS="debian-${ARCH}"

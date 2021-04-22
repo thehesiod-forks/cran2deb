@@ -440,7 +440,7 @@ class PackageBuilder:
                 with open(debian_shlibs_path, "a") as f:
                     f.write("libgdal 26 fbn-libgdal" + os.linesep)
 
-            if pkg_name.cran_name.lower() in {"sf"}:
+            if pkg_name.cran_name.lower() in {"sf", 'rgdal'}:
                 with open(debian_shlibs_path, "a") as f:
                     f.write("libproj 17 fbn-libproj" + os.linesep)
 
