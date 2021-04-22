@@ -10,14 +10,16 @@ apt-get update && \
     apt-get install -y --no-install-recommends \
     pbuilder devscripts fakeroot dh-r reprepro sqlite3 lsb-release build-essential equivs \
     libcurl4-gnutls-dev libxml2-dev libssl-dev \
-    r-cran-littler r-cran-hwriter cdbs
+    cdbs
 
 # Attempt to install packages
-# TODO: combine this list and below list
+function join_by { local d=${1-} f=${2-}; if shift 2; then printf %s "$f" "${@/#/$d}"; fi; }
+
+
 set +e
-required_modules=("r-cran-ctv" "r-cran-rsqlite" "r-cran-dbi" "r-cran-digest" "r-cran-getopt" "r-cran-rcpp")
+required_modules=("ctv" "RSQLite" "DBI" "digest" "getopt" "Rcpp" "littler" "hwriter")
 for module in ${required_modules[*]}; do
-     apt-get install -y --no-install-recommends ${module}
+     apt-get install -y --no-install-recommends "r-cran-${module,,}"
 done
 set -e
 
@@ -26,6 +28,8 @@ set -e
 export MAKEFLAGS='-j2'
 
 # Install R packages requirements
+packages_str=\"$(join_by '", "' ${required_modules[*]})\"
+
 cat << EOF > /tmp/r_setup_pkgs.R
 ipak <- function(pkg) {
     new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
@@ -35,7 +39,7 @@ ipak <- function(pkg) {
 
     sapply(pkg, require, character.only = TRUE)
 }
-ipak(c("ctv", "RSQLite", "DBI", "digest", "getopt"))
+ipak(c(${packages_str}))
 EOF
 
 Rscript /tmp/r_setup_pkgs.R
