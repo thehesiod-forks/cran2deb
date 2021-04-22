@@ -134,6 +134,13 @@ def _epoch_context(epoch: Optional[int]):
             _ensure_epoch(previous_epoch)
 
 
+_cran_module_names = {
+    pkg_name.lower(): pkg_name
+    for pkg_name in map(str.strip, subprocess.check_output(['r', '-e', 'print(available.packages()[, 0])']).decode('utf-8').splitlines())
+    if pkg_name
+}
+
+
 class PkgName:
     _r_cran_prefix = 'r-cran-'
     _r_bioc_prefix = 'r-bioc-'
@@ -179,11 +186,12 @@ class PkgName:
 
     def _strip_r_cran_prefix(self, pkg_name: str):
         if pkg_name.startswith(self._r_cran_prefix):
-            return pkg_name[len(self._r_cran_prefix):]
+            pkg_name = pkg_name[len(self._r_cran_prefix):]
 
-        if pkg_name.startswith(self._r_bioc_prefix):
-            return pkg_name[len(self._r_bioc_prefix):]
+        elif pkg_name.startswith(self._r_bioc_prefix):
+            pkg_name = pkg_name[len(self._r_bioc_prefix):]
 
+        pkg_name = _cran_module_names.get(pkg_name, pkg_name)
         return pkg_name
 
 
