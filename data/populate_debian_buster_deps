@@ -43,6 +43,7 @@ sysreq pandoc Package vignettes based on R Markdown %
 alias_build pandoc rst2pdf
 alias_run pandoc rst2pdf
 sysreq ignore c++11
+sysreq ignore c("c++"
 wipe_alias %jpeg% %jpeg% %jpeg%
 sysreq libjpeg libjpeg%
 sysreq libjpeg jpeg libraries
@@ -88,3 +89,9 @@ sysreq nlopt a system installation of nlopt will be used if available
 alias_build git git
 alias_run git git
 sysreq git git
+alias_build x11 libx11-dev
+alias_run x11 libx11-6
+sysreq x11 x11
+sysreq libfontconfig "\n fontconfig"
+sysreq libfreetype  "\n freetype")
+sysreq sqlite sqlite

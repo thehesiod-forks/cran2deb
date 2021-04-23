@@ -33,6 +33,10 @@ export MAKEFLAGS='-j2'
 # Install R packages requirements
 packages_str=\"$(join_by '", "' ${required_modules[*]})\"
 
+cat << EOF > ~/.Rprofile
+options(Ncpus = $(nproc))
+EOF
+
 cat << EOF > /tmp/r_setup_pkgs.R
 ipak <- function(pkg) {
     new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]

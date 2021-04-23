@@ -235,7 +235,7 @@ def _reset_module(pkg_name: PkgName):
     response = requests.get(f"https://deb.fbn.org/remove/{_deb_repo_codename}/{pkg_name.deb_name}-dbgsym")
     assert response.status_code == 200, f"Error removing {pkg_name}-dbgsym from http repo with response code: {response.status_code}"
 
-    subprocess.check_call(["apt-get", "remove", pkg_name.deb_name])
+    subprocess.call(["apt-get", "remove", pkg_name.deb_name])  # the package may not exist yet so don't check the error
     subprocess.check_call(["cran2deb", "build_force", pkg_name.cran_name])
 
 
@@ -353,6 +353,7 @@ def _get_build_dependencies(dir_path: str) -> Set[PkgName]:
     stderr = p.stderr.decode('utf-8').splitlines()
 
     if p.returncode == 0:
+        print(f"found no dsc deps")
         return set()
 
     assert not stdout, f"Encountered stdout: {stdout}"
@@ -444,7 +445,7 @@ class PackageBuilder:
 
             debian_shlibs_path = os.path.join(dirs[0], "debian", "shlibs.local")
 
-            if pkg_name.cran_name.lower() in {"rgeos", "sf"}:
+            if pkg_name.cran_name.lower() in {"rgeos", "sf", "terra"}:
                 print("Applying custom FBN patches to rgeos")
                 # for some reason dpkg-build does not find geos-config in /usr/local/bin
                 if not os.path.exists("/usr/bin/geos-config"):
@@ -460,7 +461,7 @@ class PackageBuilder:
                 with open(debian_shlibs_path, "a") as f:
                     f.write("libnetcdf 15 fbn-libnetcdf" + os.linesep)
 
-            if pkg_name.cran_name.lower() in {"rgdal", "sf"}:
+            if pkg_name.cran_name.lower() in {"rgdal", "sf", "terra"}:
                 if not os.path.exists("/usr/bin/gdal-config"):
                     # TODO: add cleanup
                     os.symlink("/usr/local/bin/gdal-config", "/usr/bin/gdal-config")
@@ -468,11 +469,14 @@ class PackageBuilder:
                 with open(debian_shlibs_path, "a") as f:
                     f.write("libgdal 26 fbn-libgdal" + os.linesep)
 
-            if pkg_name.cran_name.lower() in {"sf", 'rgdal'}:
                 with open(debian_shlibs_path, "a") as f:
                     f.write("libproj 17 fbn-libproj" + os.linesep)
 
             self._ensure_distribution_in_changelog(os.path.join(dirs[0], "debian", "changelog"))
+
+            subprocess.check_call(['rm', '-rf', '/tmp/last-build'])
+            subprocess.check_call(['mkdir', '-p', '/tmp/last-build'])
+            subprocess.check_call(['cp', '-R', td, '/tmp/last-build'])
 
             subprocess.check_call(["debuild", "-us", "-uc"], cwd=dirs[0])
 
@@ -575,7 +579,11 @@ def _get_cran2deb_version(pkg_name: PkgName):
         else:
             db_ver = db_ver[0]
 
-        latest_r_ver = rpy2.robjects.r.available.rx(pkg_name.cran_name, 'Version')[0]
+        print(f"getting cran version of: {pkg_name}")
+        if pkg_name.version:
+            latest_r_ver = pkg_name.version
+        else:
+            latest_r_ver = rpy2.robjects.r.available.rx(pkg_name.cran_name, 'Version')[0]
 
         if db_ver is not None:
             version = _cran2deb.version_update(latest_r_ver, db_ver, False)[0]  # False since we don't want to increment the cran#
@@ -599,12 +607,17 @@ def main():
     with open(_dist_path, "w") as f:
         f.write(_dist_template.format(origin=app_args.origin))
 
-    old_packages = [
-        PkgName('mvtnorm=1.0-8', True),  # latest mvtnorm is 3.5+
-        PkgName('multcomp=1.4-8', True),  # Latest version requires latest mvtnorm which requires newer R version
-        PkgName('caret=6.0-81', True),
-        PkgName('udunits=1.3.1', True)
-    ]
+    old_packages = []
+
+    if ".".join(_r_major_minor) == "3.4":
+        old_packages = [
+            PkgName('mvtnorm=1.0-8', True),  # latest mvtnorm is 3.5+
+            PkgName('multcomp=1.4-8', True),  # Latest version requires latest mvtnorm which requires newer R version
+            PkgName('caret=6.0-81', True),
+            PkgName('udunits=1.3.1', True)
+        ]
+
+    old_names = {pkg_name.cran_name for pkg_name in old_packages}
 
     _ensure_old_versions(old_packages)
 
@@ -612,6 +625,8 @@ def main():
 
     for cran_pkg_name in app_args.cran_pkg_name:
         cran_pkg_name = PkgName(cran_pkg_name, True)
+
+        assert not cran_pkg_name.version or cran_pkg_name.cran_name not in old_names, f"this package's version is overridden"
 
         if cran_pkg_name.version:
             _ensure_old_versions([cran_pkg_name])

@@ -17,7 +17,7 @@ if (length(argv) == 3) {
         needs_compilation = "yes"
     }
 
-    latest_version = available.packages()['ggplot2', 'Version']
+    latest_version = available.packages()[pkgname, 'Version']
     if(latest_version != version) {
         needs_compilation=NA
     }
