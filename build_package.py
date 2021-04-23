@@ -15,11 +15,14 @@ import contextlib
 
 # Third Party
 import requests
+from rpy2.robjects.packages import importr
+import rpy2.robjects
 
 
 # NOTE: if there are weird dependency problems look in /var/lib/dpkg/status
 
 _frozen_map = MappingProxyType({})
+_cran2deb = importr('cran2deb')
 
 
 _dist_template = """
@@ -69,7 +72,7 @@ _local_sqlite_path = '/var/cache/cran2deb/cran2deb.db'
 
 
 class DebVersion(NamedTuple):
-    version: str
+    version: str  # includes epoch
     build_num: str
 
 
@@ -102,38 +105,6 @@ def _get_name_replacements() -> Dict[str, str]:
     return name_replacements
 
 
-def _ensure_epoch(epoch: int):
-    print(f"Ensuring epoch: {epoch}")
-    conn = sqlite3.connect(_local_sqlite_path)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
-    row = cur.execute("SELECT version, base_epoch FROM database_versions where base_epoch = (select max(base_epoch) from database_versions)").fetchone()
-    previous_epoch = row['base_epoch']
-    if previous_epoch == epoch:
-        return previous_epoch
-
-    cur.execute("update database_versions set base_epoch=? where version = ?", [epoch, row['version']])
-    conn.commit()
-
-    row = cur.execute("SELECT version, base_epoch FROM database_versions where base_epoch = (select max(base_epoch) from database_versions)").fetchone()
-    if row['base_epoch'] != epoch:
-        rows = cur.execute("SELECT version, base_epoch FROM database_versions").fetchall()
-        print(list(map(dict, rows)))
-        assert False
-
-    return previous_epoch
-
-
-@contextlib.contextmanager
-def _epoch_context(epoch: Optional[int]):
-    previous_epoch = _ensure_epoch(epoch) if epoch is not None else None
-    try:
-        yield
-    finally:
-        if previous_epoch is not None:
-            _ensure_epoch(previous_epoch)
-
-
 _cran_module_names = {
     pkg_name.lower(): pkg_name
     for pkg_name in map(str.strip, subprocess.check_output(['r', '-e', 'print(available.packages()[, 0])']).decode('utf-8').splitlines())
@@ -158,6 +129,8 @@ class PkgName:
         if self.version and ':' in self.version:
             self.epoch, self.version = self.version.split(':', 1)
             self.epoch = int(self.epoch)
+            if self.epoch == 0:
+                self.epoch = None
 
         if force_cran:
             self.cran_name = self._strip_r_cran_prefix(pkg_name)
@@ -173,7 +146,7 @@ class PkgName:
             self.cran_name = self._name_replacements.get(self.cran_name, self.cran_name)
 
     def __repr__(self):
-        value = f'deb_name="{self.deb_name}", epoch={self.epoch or 0}'
+        value = f'deb_name="{self.deb_name}", epoch={self.epoch}'
         if self.cran_name:
             value = f'{value}, cran_name="{self.cran_name}"'
         return f'PkgName({value})'
@@ -193,6 +166,53 @@ class PkgName:
 
         pkg_name = _cran_module_names.get(pkg_name, pkg_name)
         return pkg_name
+
+
+def _ensure_epoch(pkg: PkgName):
+    print(f"Ensuring epoch: {pkg.epoch}")
+    conn = sqlite3.connect(_local_sqlite_path)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    # this will set the package epoch
+    row = cur.execute("SELECT deb_epoch from builds where package = ? and r_version = ?", [pkg.cran_name, pkg.version]).fetchone()
+    if row:
+        previous_epoch = row['deb_epoch']
+        if previous_epoch == pkg.epoch:
+            return
+
+        cur.execute("update builds set deb_epoch=? where package = ? and r_version = ?", [pkg.epoch, pkg.cran_name, pkg.version])
+        conn.commit()
+        return previous_epoch
+
+    # this will set the global epoch
+    row = cur.execute("""
+        SELECT version, base_epoch 
+        FROM database_versions 
+        where base_epoch = (select max(base_epoch) from database_versions)""").fetchone()
+    previous_epoch = row['base_epoch']
+    if previous_epoch == pkg.epoch:
+        return previous_epoch
+
+    cur.execute("update database_versions set base_epoch=? where version = ?", [pkg.epoch, row['version']])
+    conn.commit()
+
+    row = cur.execute("SELECT version, base_epoch FROM database_versions where base_epoch = (select max(base_epoch) from database_versions)").fetchone()
+    if row['base_epoch'] != pkg.epoch:
+        rows = cur.execute("SELECT version, base_epoch FROM database_versions").fetchall()
+        assert False
+
+    return previous_epoch
+
+
+@contextlib.contextmanager
+def _epoch_context(pkg: PkgName):
+    previous_epoch = _ensure_epoch(pkg) if pkg.epoch is not None else None
+    try:
+        yield
+    finally:
+        if previous_epoch is not None:
+            _ensure_epoch(previous_epoch)
 
 
 def _set_package_compile_failed(pkg: PkgName):
@@ -231,7 +251,7 @@ def _ensure_old_versions(old_packages: List[PkgName]):
     conn = sqlite3.connect(_local_sqlite_path)
     conn.row_factory = sqlite3.Row
 
-    scm_revision = subprocess.check_output(['r', '-q', '-e', 'suppressPackageStartupMessages(library(cran2deb));cat(scm_revision)']).decode('utf-8')
+    scm_revision = rpy2.robjects.r['scm_revision'][0]
     if ".".join(_r_major_minor) not in {"3.4", "3.5", "4.0"}:
         print(f'Unsupported R version: {".".join(_r_version)}')
         return
@@ -511,7 +531,7 @@ class PackageBuilder:
 
         # Build source package
         print("Building source package")
-        with _epoch_context(cran_pkg_name.epoch):
+        with _epoch_context(cran_pkg_name):
             if force_build:
                 _set_package_compile_failed(cran_pkg_name)
             subprocess.check_call(["cran2deb", "build", cran_pkg_name.cran_name])
@@ -547,32 +567,22 @@ def _get_cran2deb_version(pkg_name: PkgName):
     if `debian_revision` == 1, it's actually 2, otherwise it's correct
 
     """
-    # TODO: this is slow, find a way to do this faster
-    with _epoch_context(pkg_name.epoch):
-        output = subprocess.check_output(['r', '-q', '-e', f"suppressMessages(library(cran2deb)); cat(new_build_version('{pkg_name.cran_name}'))"]).decode('utf-8')
+    with _epoch_context(pkg_name):
+        # tweak of new_build_version
+        db_ver = _cran2deb.db_latest_build_version(pkg_name.cran_name)
+        if db_ver == rpy2.robjects.rinterface.NULL:
+            db_ver = None
+        else:
+            db_ver = db_ver[0]
 
-    rver = None
-    for line in output.splitlines():
-        m = _rver_line_re.match(line)
-        if m:
-            m = m.groupdict()
-            if m['debian_revision'] == "1":
-                m['debian_revision'] = "2"
+        latest_r_ver = rpy2.robjects.r.available.rx(pkg_name.cran_name, 'Version')[0]
 
-            rver = f"{m['rver']}-1cran{m['debian_revision']}"
-            if m['debian_epoch']:
-                rver = f"{m['debian_epoch']}:{rver}"
+        if db_ver is not None:
+            version = _cran2deb.version_update(latest_r_ver, db_ver, False)[0]  # False since we don't want to increment the cran#
+        else:
+            version = _cran2deb.version_new(latest_r_ver)[0]
 
-            continue
-
-        m = _version_update_line_re.match(line)
-        if m:
-            return m.group('prev_pkgver') + f"R{'.'.join(_r_major_minor)}"
-
-    if rver:
-        return rver
-
-    assert False, f"Unable to determine version from: {output}"
+    return version + f"R{'.'.join(_r_major_minor)}"
 
 
 def main():

@@ -117,4 +117,4 @@ reset_reprepro () {
   reprepro -b /var/www/cran2deb/rep removefilter rbuilders 'Section'
 }
 
-python3 -m pip install distro
+python3 -m pip install distro rpy2
