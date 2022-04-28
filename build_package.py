@@ -61,7 +61,7 @@ _version_update_line_re = re.compile(r'version_update:\s+rver: (?P<rver>[^ ]+)\s
 _changelog_first_line = re.compile(r'(?P<pkgname>[^ ]+) \((?P<version>[^)]+)\) (?P<eol>.*)')
 
 _r_version = tuple(subprocess.check_output(["dpkg-query", "--showformat=${Version}", "--show", "r-base-core"]).decode('utf-8').split('.'))
-_r_major_minor = _r_version[:2]
+_r_major_minor = f'{_r_version[0]}0'
 _distribution = subprocess.check_output(["lsb_release", "-c", "-s"]).decode('utf-8').strip()  # ex: stretch
 _deb_repo_codename = f'{_distribution}-cran{"".join(_r_major_minor)}'
 
