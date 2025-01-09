@@ -82,6 +82,8 @@ sysreqs_as_debian <- function(sysreq_text, verbose=FALSE) {
     sysreq_text <- gsub('[[:space:]]and[[:space:]]',' , ',tolower(sysreq_text))
 
     for (sysreq in strsplit(sysreq_text,'[[:space:]]*,[[:space:]]*')[[1]]) {
+        sysreq <- gsub('[\r\n]', '', sysreq)
+
 	    if (verbose) cat("sysreq to investigate: '", sysreq,"'.\n", sep="")
         startreq = sysreq
 
@@ -201,4 +203,3 @@ generate_control <- function(pkg) {
     write.dcf(control,file=pkg$debfile('control.in'),indent=1,width=72)
     write.dcf(control,indent=1,width=72)
 }
-
