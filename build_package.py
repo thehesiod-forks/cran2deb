@@ -63,7 +63,9 @@ _changelog_first_line = re.compile(r'(?P<pkgname>[^ ]+) \((?P<version>[^)]+)\) (
 _r_version = tuple(subprocess.check_output(["dpkg-query", "--showformat=${Version}", "--show", "r-base-core"]).decode('utf-8').split('.'))
 _r_major_minor = f'{_r_version[0]}0'
 _distribution = subprocess.check_output(["lsb_release", "-c", "-s"]).decode('utf-8').strip()  # ex: stretch
-_deb_repo_codename = f'{_distribution}-cran{"".join(_r_major_minor)}'
+
+# _deb_repo_codename = f'{_distribution}-cran{"".join(_r_major_minor)}'
+_deb_repo_codename = _distribution
 
 _num_cpus = multiprocessing.cpu_count()
 
