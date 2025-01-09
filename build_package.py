@@ -442,8 +442,10 @@ class PackageBuilder:
             self._install_deps(deps)
 
             subprocess.check_call(["mk-build-deps", "-i", "-r", "-t", "apt-get --no-install-recommends -y"], cwd=dirs[0])
+            subprocess.check_call(['dh_makeshlibs', '-a', '-n'])
 
-            debian_shlibs_path = os.path.join(dirs[0], "debian", "shlibs.local")
+            # TODO: this needs to be fixed in the modules themselves as this code doesn't
+            # debian_shlibs_path = os.path.join(dirs[0], "debian", "shlibs.local")
 
             if pkg_name.cran_name.lower() in {"rgeos", "sf", "terra"}:
                 print("Applying custom FBN patches to rgeos")
@@ -454,23 +456,23 @@ class PackageBuilder:
 
                 # And for some reason it cannot determine the package of libgeos_c.so.1 belongs to fbn-libgeos
                 # TODO: figure out why and impl better fix
-                with open(debian_shlibs_path, "a") as f:
-                    f.write("libgeos_c 1 fbn-libgeos" + os.linesep)
+                # with open(debian_shlibs_path, "a") as f:
+                #     f.write("libgeos_c 1 fbn-libgeos" + os.linesep)
 
-            if pkg_name.cran_name.lower() == "rnetcdf":
-                with open(debian_shlibs_path, "a") as f:
-                    f.write("libnetcdf 15 fbn-libnetcdf" + os.linesep)
+            # if pkg_name.cran_name.lower() == "rnetcdf":
+            #     with open(debian_shlibs_path, "a") as f:
+            #         f.write("libnetcdf 15 fbn-libnetcdf" + os.linesep)
 
             if pkg_name.cran_name.lower() in {"rgdal", "sf", "terra"}:
                 if not os.path.exists("/usr/bin/gdal-config"):
                     # TODO: add cleanup
                     os.symlink("/usr/local/bin/gdal-config", "/usr/bin/gdal-config")
 
-                with open(debian_shlibs_path, "a") as f:
-                    f.write("libgdal 26 fbn-libgdal" + os.linesep)
+                # with open(debian_shlibs_path, "a") as f:
+                #     f.write("libgdal 26 fbn-libgdal" + os.linesep)
 
-                with open(debian_shlibs_path, "a") as f:
-                    f.write("libproj 17 fbn-libproj" + os.linesep)
+                # with open(debian_shlibs_path, "a") as f:
+                #     f.write("libproj 17 fbn-libproj" + os.linesep)
 
             self._ensure_distribution_in_changelog(os.path.join(dirs[0], "debian", "changelog"))
 

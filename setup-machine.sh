@@ -28,7 +28,7 @@ required_modules=("Rcpp" "ctv" "RSQLite" "DBI" "digest" "getopt" "hwriter")
 
 # NOTE: if you enable this it can hang your docker container
 #export MAKEFLAGS='-j$(nproc)'
-export MAKEFLAGS='-j2'
+export MAKEFLAGS='-j4'
 
 # Install R packages requirements
 packages_str=\"$(join_by '", "' ${required_modules[*]})\"
