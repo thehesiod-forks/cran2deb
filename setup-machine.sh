@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -ex
+set -xeo pipefail
 
 # TODO: migrate this all the python
 this_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -26,9 +26,7 @@ required_modules=("Rcpp" "ctv" "RSQLite" "DBI" "digest" "getopt" "hwriter")
 #done
 #set -e
 
-# NOTE: if you enable this it can hang your docker container
-#export MAKEFLAGS='-j$(nproc)'
-export MAKEFLAGS='-j4'
+export MAKEFLAGS='-j$(nproc)'
 
 # Install R packages requirements
 packages_str=\"$(join_by '", "' ${required_modules[*]})\"
@@ -70,6 +68,7 @@ chmod u+x /usr/bin/cran2deb
 export ROOT=$(cran2deb root)
 export ARCH=$(dpkg --print-architecture)
 export SYS="debian-${ARCH}"
+export CRAN2DEB_SYS="debian-${ARCH}"
 export R_VERSION=$(dpkg-query --showformat='${Version}' --show r-base-core)
 export DIST=$(lsb_release -c -s)
 
@@ -121,4 +120,5 @@ reset_reprepro () {
   reprepro -b /var/www/cran2deb/rep removefilter rbuilders 'Section'
 }
 
-python3 -m pip install distro rpy2
+#python3 -m pip install distro rpy2
+apt-get install python3-distro python3-requests python3-rpy2

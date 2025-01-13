@@ -83,6 +83,7 @@ sysreqs_as_debian <- function(sysreq_text, verbose=FALSE) {
 
     for (sysreq in strsplit(sysreq_text,'[[:space:]]*,[[:space:]]*')[[1]]) {
         sysreq <- gsub('[\r\n]', '', sysreq)
+        sysreq <- trimws(sysreq)
 
 	    if (verbose) cat("sysreq to investigate: '", sysreq,"'.\n", sep="")
         startreq = sysreq

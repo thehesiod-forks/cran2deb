@@ -18,8 +18,7 @@ fi
 shift
 sys=$(cran2deb which_system)
 mkdir -p /var/cache/cran2deb/results/$sys
-#update_period=10800
-update_period=108
+update_period=10800
 
 if [ ! $1 = full ] || [ ! -e /var/cache/cran2deb/cache.rda ]; then
     delta=$(($update_period+1))
@@ -42,4 +41,3 @@ if [ ! -e /var/cache/cran2deb/cache.rda ] || [ $delta -gt $update_period ]; then
     echo "Executing $root/exec/update_cache $root"
     $root/exec/update_cache $root
 fi
-

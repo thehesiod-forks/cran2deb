@@ -29,7 +29,7 @@ _dist_template = """
 Origin: {origin}
 Codename: rbuilders
 Components: main
-Architectures: source amd64
+Architectures: source amd64 arm64
 Description: Debian Repository
 """
 
@@ -551,7 +551,11 @@ class PackageBuilder:
 def _get_pkg_dsc_path(pkg_name: PkgName):
     glob_str = f"/etc/cran2deb/archive/rep/pool/main/{pkg_name.cran_name[0].lower()}/{pkg_name.cran_name.lower()}/*.dsc"
     glob_dscs = glob.glob(glob_str)
-    assert len(glob_dscs) == 1, f"Could not find one dsc in: {glob_str} found: {glob_dscs}"
+
+    if len(glob_dscs) != 1:
+        print(f"Could not find one dsc in: {glob_str} found: {glob_dscs}")
+        input("Press Enter to continue...")
+        assert False
 
     return glob_dscs[0]
 

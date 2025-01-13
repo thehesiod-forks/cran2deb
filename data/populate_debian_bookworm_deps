@@ -2,10 +2,10 @@ wipe_alias udunits% udunits% udunits%
 sysreq udunits udunits%
 alias_build udunits libudunits2-dev
 alias_run udunits libudunits2-0
-sysreq libssl1.0.2 openssl
-sysreq libssl1.0.2 library. openssl headers
-alias_build libssl1.0.2 libssl1.0-dev
-alias_run libssl1.0.2 libssl1.0.2
+sysreq libssl3 openssl
+sysreq libssl3 library. openssl headers
+alias_build libssl3 libssl-dev
+alias_run libssl3 libssl3
 sysreq tzdata A system with zoneinfo data%
 sysreq ignore little-endian platform
 wipe_alias libpng% libpng% libpng%
@@ -73,10 +73,9 @@ sysreq ignore subversion for install_svn
 sysreq ignore git for install_git
 sysreq ignore if a system installation is not available
 sysreq ignore builds
-sysreq ignore  or wl-clipboard for systems using wayland
-sysreq libcurl4-gnutls-dev  libcurl : libcurl-devel or libcurlopenssl-dev
-sysreq libcurl4-gnutls-dev  libcurl : libcurl-devel orlibcurlopenssl-dev
-sysreq libcurl4-gnutls-dev  libcurl : libcurl-devel orlibcurlopenssl-dev
+sysreq ignore or wl-clipboard for systems using wayland
+sysreq libcurl4-gnutls-dev libcurl : libcurl-devel or libcurlopenssl-dev
+sysreq libcurl4-gnutls-dev libcurl : libcurl-devel orlibcurlopenssl-dev
 sysreq git git
 alias_build git git
 alias_run git git
