@@ -60,6 +60,7 @@ sysreq libtiff libtiff
 alias_build libtiff libtiff5-dev
 alias_run libtiff libtiff5
 sysreq libgit2 gitr uses a system installation of the libgit headers
+sysreq libgit2 git2r uses a system installation of thelibgit2 headers
 alias_build libgit2 libgit2-dev
 alias_run libgit2 libgit2-24
 sysreq zlib1g uses a bundled of the libgit source. zlib headers

@@ -18,12 +18,13 @@ import requests
 from rpy2.robjects.packages import importr
 import rpy2.robjects
 
+import pydevd_pycharm
+pydevd_pycharm.settrace('host.docker.internal', port=55555, stdoutToServer=True, stderrToServer=True, suspend=False)
 
 # NOTE: if there are weird dependency problems look in /var/lib/dpkg/status
 
 _frozen_map = MappingProxyType({})
 _cran2deb = importr('cran2deb')
-
 
 _dist_template = """
 Origin: {origin}

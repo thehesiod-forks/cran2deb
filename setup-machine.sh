@@ -121,4 +121,4 @@ reset_reprepro () {
 }
 
 #python3 -m pip install distro rpy2
-apt-get install python3-distro python3-requests python3-rpy2
+apt-get install python3-distro python3-requests python3-rpy2 python3-pandas
